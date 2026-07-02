@@ -1,0 +1,82 @@
+name: CI_Spy_CD_Fly 🕵️✈️
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+jobs:
+  # ---------- CI STAGE: lint + test ----------
+  ci_spy:
+    name: "🕵️ CI_Spy — investigating the code"
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install -r requirements-dev.txt
+
+      - name: Lint (flake8)
+        run: flake8 src tests --max-line-length=100
+
+      - name: Test with coverage
+        run: pytest --cov=word_counter --cov-report=html --cov-report=term
+
+      - name: Upload coverage report as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-report
+          path: htmlcov/
+
+  # ---------- CD STAGE: deploy to GitHub Pages ----------
+  # Runs only if ci_spy succeeded, and only for pushes to main
+  cd_fly:
+    name: "✈️ CD_Fly — shipping to production"
+    needs: ci_spy
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          pip install -e .
+          pip install -r requirements-dev.txt
+
+      - name: Rebuild coverage report for deployment
+        run: pytest --cov=word_counter --cov-report=html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: htmlcov/
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
